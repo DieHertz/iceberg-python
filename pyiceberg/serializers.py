@@ -78,7 +78,10 @@ class FromByteStream:
 
     @staticmethod
     def table_metadata(
-        byte_stream: InputStream, encoding: str = UTF8, compression: Compressor = NOOP_COMPRESSOR
+        byte_stream: InputStream,
+        encoding: str = UTF8,
+        compression: Compressor = NOOP_COMPRESSOR,
+        current_only: bool = False,
     ) -> TableMetadata:
         """Instantiate a TableMetadata object from a byte stream.
 
@@ -92,14 +95,18 @@ class FromByteStream:
             json_bytes = reader(byte_stream)
             metadata = json_bytes.read()
 
-        return TableMetadataUtil.parse_raw(metadata)
+        return TableMetadataUtil.parse_raw(metadata, current_only=current_only)
 
 
 class FromInputFile:
     """A collection of methods that deserialize InputFiles into Iceberg objects."""
 
     @staticmethod
-    def table_metadata(input_file: InputFile, encoding: str = UTF8) -> TableMetadata:
+    def table_metadata(
+        input_file: InputFile,
+        encoding: str = UTF8,
+        current_only: bool = False,
+    ) -> TableMetadata:
         """Create a TableMetadata instance from an input file.
 
         Args:
@@ -112,7 +119,10 @@ class FromInputFile:
         """
         with input_file.open() as input_stream:
             return FromByteStream.table_metadata(
-                byte_stream=input_stream, encoding=encoding, compression=Compressor.get_compressor(location=input_file.location)
+                byte_stream=input_stream,
+                encoding=encoding,
+                compression=Compressor.get_compressor(location=input_file.location),
+                current_only=current_only,
             )
 
 

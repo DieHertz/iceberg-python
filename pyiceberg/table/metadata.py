@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import uuid
 from copy import copy
 from typing import (
@@ -568,9 +569,21 @@ class TableMetadataUtil:
     """Helper class for parsing TableMetadata."""
 
     @staticmethod
-    def parse_raw(data: str) -> TableMetadata:
+    def parse_raw(data: str, current_only: bool = False) -> TableMetadata:
         try:
-            return TableMetadataWrapper.model_validate_json(data).root
+            obj = json.loads(data)
+            if current_only:
+                obj['schemas'] = [
+                    schema
+                    for schema in obj['schemas']
+                    if schema['schema-id'] == obj[CURRENT_SCHEMA_ID]
+                ]
+                obj['snapshots'] = [
+                    snapshot
+                    for snapshot in obj['snapshots']
+                    if snapshot['snapshot-id'] == obj[CURRENT_SNAPSHOT_ID]
+                ]
+            return TableMetadataWrapper.model_validate(obj).root
         except PydanticValidationError as e:
             raise ValidationError(e) from e
 

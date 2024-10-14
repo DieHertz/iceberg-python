@@ -319,7 +319,7 @@ class GlueCatalog(MetastoreCatalog):
         if glue_catalog_id := properties.get(GLUE_ID):
             _register_glue_catalog_id_with_glue_client(self.glue, glue_catalog_id)
 
-    def _convert_glue_to_iceberg(self, glue_table: TableTypeDef) -> Table:
+    def _convert_glue_to_iceberg(self, glue_table: TableTypeDef, current_only: bool = False) -> Table:
         properties: Properties = glue_table["Parameters"]
 
         assert glue_table["DatabaseName"]
@@ -346,7 +346,7 @@ class GlueCatalog(MetastoreCatalog):
 
         io = self._load_file_io(location=metadata_location)
         file = io.new_input(metadata_location)
-        metadata = FromInputFile.table_metadata(file)
+        metadata = FromInputFile.table_metadata(file, current_only=current_only)
         return Table(
             identifier=(self.name, database_name, table_name),
             metadata=metadata,
@@ -528,7 +528,7 @@ class GlueCatalog(MetastoreCatalog):
             metadata=updated_staged_table.metadata, metadata_location=updated_staged_table.metadata_location
         )
 
-    def load_table(self, identifier: Union[str, Identifier]) -> Table:
+    def load_table(self, identifier: Union[str, Identifier], current_only: bool = False) -> Table:
         """Load the table's metadata and returns the table instance.
 
         You can also use this method to check for table existence using 'try catalog.table() except TableNotFoundError'.
@@ -546,7 +546,10 @@ class GlueCatalog(MetastoreCatalog):
         identifier_tuple = self.identifier_to_tuple_without_catalog(identifier)
         database_name, table_name = self.identifier_to_database_and_table(identifier_tuple, NoSuchTableError)
 
-        return self._convert_glue_to_iceberg(self._get_glue_table(database_name=database_name, table_name=table_name))
+        return self._convert_glue_to_iceberg(
+            self._get_glue_table(database_name=database_name, table_name=table_name),
+            current_only=current_only,
+        )
 
     def drop_table(self, identifier: Union[str, Identifier]) -> None:
         """Drop a table.
