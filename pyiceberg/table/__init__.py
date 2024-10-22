@@ -22,12 +22,12 @@ import uuid
 import warnings
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from concurrent.futures import Future
+from concurrent.futures import Future, ProcessPoolExecutor
 from copy import copy
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from functools import cached_property, singledispatch
+from functools import cached_property, singledispatch, partial
 from itertools import chain
 from typing import (
     TYPE_CHECKING,
@@ -4447,55 +4447,9 @@ class InspectTable:
 
         schema = self.tbl.metadata.schema()
 
-        def _process_manifest(io, schema, manifest):
-            files = []
-            for manifest_entry in manifest.fetch_manifest_entry(io):
-                data_file = manifest_entry.data_file
-                column_sizes = data_file.column_sizes or {}
-                value_counts = data_file.value_counts or {}
-                null_value_counts = data_file.null_value_counts or {}
-                nan_value_counts = data_file.nan_value_counts or {}
-                lower_bounds = data_file.lower_bounds or {}
-                upper_bounds = data_file.upper_bounds or {}
-                readable_metrics = {
-                    schema.find_column_name(field.field_id): {
-                        "column_size": column_sizes.get(field.field_id),
-                        "value_count": value_counts.get(field.field_id),
-                        "null_value_count": null_value_counts.get(field.field_id),
-                        "nan_value_count": nan_value_counts.get(field.field_id),
-                        "lower_bound": from_bytes(field.field_type, lower_bound)
-                        if (lower_bound := lower_bounds.get(field.field_id))
-                        else None,
-                        "upper_bound": from_bytes(field.field_type, upper_bound)
-                        if (upper_bound := upper_bounds.get(field.field_id))
-                        else None,
-                    }
-                    for field in schema.fields
-                }
-                files.append({
-                    "content": data_file.content,
-                    "file_path": data_file.file_path,
-                    "file_format": data_file.file_format,
-                    "spec_id": data_file.spec_id,
-                    "record_count": data_file.record_count,
-                    "file_size_in_bytes": data_file.file_size_in_bytes,
-                    "column_sizes": dict(data_file.column_sizes),
-                    "value_counts": dict(data_file.value_counts),
-                    "null_value_counts": dict(data_file.null_value_counts),
-                    "nan_value_counts": dict(data_file.nan_value_counts),
-                    "lower_bounds": dict(data_file.lower_bounds),
-                    "upper_bounds": dict(data_file.upper_bounds),
-                    "key_metadata": data_file.key_metadata,
-                    "split_offsets": data_file.split_offsets,
-                    "equality_ids": data_file.equality_ids,
-                    "sort_order_id": data_file.sort_order_id,
-                    "readable_metrics": readable_metrics,
-                })
-            return files
-
         io = self.tbl.io
-        executor = ExecutorFactory.get_or_create()
-        files = [*chain(*executor.map(partial(_process_manifest, io, schema), snapshot.manifests(io)))]
+        with ProcessPoolExecutor() as pool:
+            files = [*chain(*pool.map(partial(_process_manifest, io, schema), snapshot.manifests(io)))]
 
         return pa.Table.from_pylist(
             files,
@@ -4582,3 +4536,50 @@ class _ManifestMergeManager(Generic[U]):
             merged_manifests.extend(self._merge_group(first_manifest, spec_id, groups[spec_id]))
 
         return merged_manifests
+
+
+def _process_manifest(io, schema, manifest):
+    files = []
+    for manifest_entry in manifest.fetch_manifest_entry(io):
+        data_file = manifest_entry.data_file
+        column_sizes = data_file.column_sizes or {}
+        value_counts = data_file.value_counts or {}
+        null_value_counts = data_file.null_value_counts or {}
+        nan_value_counts = data_file.nan_value_counts or {}
+        lower_bounds = data_file.lower_bounds or {}
+        upper_bounds = data_file.upper_bounds or {}
+        readable_metrics = {
+            schema.find_column_name(field.field_id): {
+                "column_size": column_sizes.get(field.field_id),
+                "value_count": value_counts.get(field.field_id),
+                "null_value_count": null_value_counts.get(field.field_id),
+                "nan_value_count": nan_value_counts.get(field.field_id),
+                "lower_bound": from_bytes(field.field_type, lower_bound)
+                        if (lower_bound := lower_bounds.get(field.field_id))
+                        else None,
+                "upper_bound": from_bytes(field.field_type, upper_bound)
+                        if (upper_bound := upper_bounds.get(field.field_id))
+                        else None,
+            }
+            for field in schema.fields
+        }
+        files.append({
+            "content": data_file.content,
+            "file_path": data_file.file_path,
+            "file_format": data_file.file_format,
+            "spec_id": data_file.spec_id,
+            "record_count": data_file.record_count,
+            "file_size_in_bytes": data_file.file_size_in_bytes,
+            "column_sizes": dict(data_file.column_sizes),
+            "value_counts": dict(data_file.value_counts),
+            "null_value_counts": dict(data_file.null_value_counts),
+            "nan_value_counts": dict(data_file.nan_value_counts),
+            "lower_bounds": dict(data_file.lower_bounds),
+            "upper_bounds": dict(data_file.upper_bounds),
+            "key_metadata": data_file.key_metadata,
+            "split_offsets": data_file.split_offsets,
+            "equality_ids": data_file.equality_ids,
+            "sort_order_id": data_file.sort_order_id,
+            "readable_metrics": readable_metrics,
+        })
+    return files
