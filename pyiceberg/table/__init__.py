@@ -4448,6 +4448,7 @@ class InspectTable:
         schema = self.tbl.metadata.schema()
 
         def _process_manifest(io, schema, manifest):
+            files = []
             for manifest_entry in manifest.fetch_manifest_entry(io):
                 data_file = manifest_entry.data_file
                 column_sizes = data_file.column_sizes or {}
@@ -4471,7 +4472,7 @@ class InspectTable:
                     }
                     for field in schema.fields
                 }
-                yield {
+                files.append({
                     "content": data_file.content,
                     "file_path": data_file.file_path,
                     "file_format": data_file.file_format,
@@ -4489,7 +4490,8 @@ class InspectTable:
                     "equality_ids": data_file.equality_ids,
                     "sort_order_id": data_file.sort_order_id,
                     "readable_metrics": readable_metrics,
-                }
+                })
+            return files
 
         io = self.tbl.io
         executor = ExecutorFactory.get_or_create()
